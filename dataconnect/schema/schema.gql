@@ -1,0 +1,61 @@
+type User @table {
+  displayName: String!
+  email: String!
+  createdAt: Timestamp!
+  phoneNumber: String
+  defaultPaymentMethod: PaymentMethod
+}
+
+type PaymentMethod @table {
+  # Assuming PaymentMethod is a separate entity for user payment details
+  # Details of PaymentMethod are not specified, so providing a placeholder
+  cardNumber: String!
+  cardType: String
+  expiryDate: String!
+  user: User!
+}
+
+type ParkingFacility @table {
+  name: String!
+  address: String!
+  latitude: Float!
+  longitude: Float!
+  totalSpots: Int!
+  createdAt: Timestamp!
+  description: String
+  hoursOfOperation: String
+  contactInfo: String
+  website: String
+}
+
+type ParkingSpot @table {
+  spotNumber: String!
+  parkingFacility: ParkingFacility!
+  type: String!
+  isAvailable: Boolean!
+  pricePerHour: Float
+  maxDurationMinutes: Int
+}
+
+type ParkingSession @table {
+  user: User!
+  parkingSpot: ParkingSpot!
+  startTime: Timestamp!
+  status: String!
+  createdAt: Timestamp!
+  endTime: Timestamp
+  actualDurationMinutes: Int
+  totalCost: Float
+  paymentTransactionId: String
+}
+
+type Reservation @table {
+  user: User!
+  parkingSpot: ParkingSpot!
+  startTime: Timestamp!
+  endTime: Timestamp!
+  status: String!
+  createdAt: Timestamp!
+  confirmationCode: String
+  estimatedCost: Float
+}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Brain, BarChart3, DollarSign, Zap } from "lucide-react";
+import { Brain, BarChart3, IndianRupee, Zap } from "lucide-react";
 
 const Technology = () => {
   const [selectedHour, setSelectedHour] = useState(12);
@@ -44,7 +44,7 @@ const Technology = () => {
       metrics: ["Live occupancy tracking", "Trend analysis", "Capacity optimization"],
     },
     {
-      icon: DollarSign,
+      icon: IndianRupee,
       title: "Dynamic Pricing",
       description: "AI-driven pricing adjusts rates based on demand, time, and location",
       metrics: ["30% revenue increase", "Fair pricing model", "Demand balancing"],

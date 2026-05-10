@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -6,14 +7,44 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from "recharts";
-import { TrendingUp, Users, Car, IndianRupee, Clock, Zap, Download } from "lucide-react";
+import { TrendingUp, Users, Car, IndianRupee, Clock, Zap, Download, Camera, Database } from "lucide-react";
+import { platformData, type ActivityLog, type Booking, type ParkingLot } from "@/lib/platformData";
 
 const Dashboard = () => {
+  const [platformStats, setPlatformStats] = useState(() => platformData.getDashboardStats());
+  const [logs, setLogs] = useState<ActivityLog[]>(() => platformData.getLogs().slice(0, 6));
+  const [lots, setLots] = useState<ParkingLot[]>(() => platformData.getLots());
+  const [bookings, setBookings] = useState<Booking[]>(() => platformData.getBookings().slice(0, 5));
+
+  useEffect(() => {
+    const refresh = () => {
+      setPlatformStats(platformData.getDashboardStats());
+      setLogs(platformData.getLogs().slice(0, 6));
+      setLots(platformData.getLots());
+      setBookings(platformData.getBookings().slice(0, 5));
+    };
+
+    refresh();
+    window.addEventListener("smart-parking-db-updated", refresh);
+    const interval = window.setInterval(refresh, 3000);
+    return () => {
+      window.removeEventListener("smart-parking-db-updated", refresh);
+      window.clearInterval(interval);
+    };
+  }, []);
+  const resetDemoData = () => {
+    platformData.reset();
+    setPlatformStats(platformData.getDashboardStats());
+    setLogs(platformData.getLogs().slice(0, 6));
+    setLots(platformData.getLots());
+    setBookings(platformData.getBookings().slice(0, 5));
+  };
+
   const stats = [
     { 
       icon: Car, 
       label: "Total Vehicles Today", 
-      value: "1,247", 
+      value: platformStats.totalVehiclesToday.toLocaleString(), 
       change: "+12%",
       trend: "up",
       color: "from-blue-500 to-blue-600"
@@ -21,7 +52,7 @@ const Dashboard = () => {
     { 
       icon: IndianRupee, 
       label: "Revenue Today", 
-      value: "₹87,450", 
+      value: `₹${platformStats.revenueToday.toLocaleString()}`, 
       change: "+8%",
       trend: "up",
       color: "from-green-500 to-green-600"
@@ -29,15 +60,15 @@ const Dashboard = () => {
     { 
       icon: Users, 
       label: "Occupancy Rate", 
-      value: "73%", 
+      value: `${platformStats.occupancyRate}%`, 
       change: "+5%",
       trend: "up",
       color: "from-purple-500 to-purple-600"
     },
     { 
       icon: Clock, 
-      label: "Avg Parking Time", 
-      value: "2.4 hrs", 
+      label: "Available Spots", 
+      value: platformStats.availableSpots.toString(), 
       change: "-10%",
       trend: "down",
       color: "from-orange-500 to-orange-600"
@@ -96,6 +127,10 @@ const Dashboard = () => {
                 <Zap className="h-4 w-4 mr-2" />
                 Live Mode
               </Button>
+              <Button variant="secondary" size="sm" onClick={resetDemoData}>
+                <Database className="h-4 w-4 mr-2" />
+                Reset Demo Data
+              </Button>
             </div>
           </div>
         </div>
@@ -127,6 +162,106 @@ const Dashboard = () => {
               );
             })}
           </div>
+        </div>
+      </section>
+
+      {/* Live Platform Monitor */}
+      <section className="py-8">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="p-6 bg-gradient-card">
+              <div className="flex items-center gap-3 mb-5">
+                <Camera className="h-5 w-5 text-primary" />
+                <h3 className="text-xl font-semibold">Camera Network</h3>
+              </div>
+              <div className="space-y-4 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Connected lots</span><span className="font-semibold">{platformStats.connectedLots}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Active cameras</span><span className="font-semibold">{platformStats.activeCameras}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">AI occupancy engine</span><Badge className="bg-success text-success-foreground">Running</Badge></div>
+              </div>
+            </Card>
+
+            <Card className="p-6 bg-gradient-card lg:col-span-2">
+              <div className="flex items-center gap-3 mb-5">
+                <Database className="h-5 w-5 text-primary" />
+                <h3 className="text-xl font-semibold">Live Activity From Platform Database</h3>
+              </div>
+              <div className="space-y-3">
+                {logs.map((log) => (
+                  <div key={log.id} className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
+                    <div>
+                      <p className="font-medium">{log.message}</p>
+                      <p className="text-sm text-muted-foreground">{log.vehicleNumber} • {log.location}</p>
+                    </div>
+                    <Badge variant="outline">{log.type}</Badge>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Owner Lots and Bookings */}
+      <section className="py-8">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="p-6 bg-gradient-card">
+              <h3 className="text-xl font-semibold mb-5">Owner Earnings</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Owner payout</span>
+                  <span className="font-semibold">₹{platformStats.ownerPayout.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Platform commission</span>
+                  <span className="font-semibold">₹{platformStats.platformCommission.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">EV reservations</span>
+                  <span className="font-semibold">{platformStats.evReservations}</span>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6 bg-gradient-card lg:col-span-2">
+              <h3 className="text-xl font-semibold mb-5">Recent Bookings</h3>
+              <div className="space-y-3">
+                {bookings.map((booking) => (
+                  <div key={booking.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
+                    <div>
+                      <p className="font-medium">{booking.id} • {booking.vehicleNumber}</p>
+                      <p className="text-sm text-muted-foreground">{booking.lotName}</p>
+                    </div>
+                    <Badge variant="outline">{booking.status}</Badge>
+                    <span className="font-semibold">₹{booking.amount}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          <Card className="p-6 bg-gradient-card mt-6">
+            <h3 className="text-xl font-semibold mb-5">Camera-Connected Owner Lots</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              {lots.map((lot) => (
+                <div key={lot.id} className="rounded-lg border border-border p-4 bg-background/50">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div>
+                      <p className="font-semibold">{lot.name}</p>
+                      <p className="text-xs text-muted-foreground">{lot.ownerName}</p>
+                    </div>
+                    <Badge className={lot.cameraStatus === "online" ? "bg-success text-success-foreground" : "bg-warning text-warning-foreground"}>{lot.cameraStatus}</Badge>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Available</span><span>{lot.availableSpots}/{lot.totalSpots}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Cameras</span><span>{lot.cameras}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Rate</span><span>₹{lot.pricePerHour}/hr</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
         </div>
       </section>
 

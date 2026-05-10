@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,21 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MapPin, Clock, DollarSign, Navigation, Send, Zap, Battery, IndianRupee, Leaf } from "lucide-react";
+import { MapPin, Clock, Navigation, Send, Zap, Battery, IndianRupee, Leaf, Camera, Database, Building2, CheckCircle2 } from "lucide-react";
+import { platformData, type ParkingLot, type Booking } from "@/lib/platformData";
+
+type ParkingResult = {
+  id: string;
+  name: string;
+  distance: string;
+  available: number;
+  price: string;
+  address: string;
+  ownerName: string;
+  cameras: number;
+  confidence: number;
+  cameraStatus: ParkingLot["cameraStatus"];
+};
 import { toast } from "sonner";
 
 const Solutions = () => {
@@ -14,11 +28,22 @@ const Solutions = () => {
   const [selectedState, setSelectedState] = useState("");
   const [selectedDistrict, setSelectedDistrict] = useState("");
   const [selectedArea, setSelectedArea] = useState("");
-  const [parkingResults, setParkingResults] = useState<Array<any>>([]);
+  const [parkingResults, setParkingResults] = useState<ParkingResult[]>([]);
+  const [bookingVehicle, setBookingVehicle] = useState("MH 02 AB 1234");
+  const [latestBooking, setLatestBooking] = useState<Booking | null>(null);
+  const [ownerForm, setOwnerForm] = useState({
+    ownerName: "School Ground Owner",
+    lotName: "School Event Parking Ground",
+    area: "Bandra",
+    totalSpots: 75,
+    cameras: 4,
+    pricePerHour: 45,
+  });
   const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "bot"; text: string }>>([
-    { role: "bot", text: "Hello! I'm your Smart Parking Assistant. How can I help you today?" },
+    { role: "bot", text: "Hello! I can search camera-connected parking spaces and reserve one for your vehicle." },
   ]);
   const [userMessage, setUserMessage] = useState("");
+  const [isAssistantTyping, setIsAssistantTyping] = useState(false);
   const [selectedChargingSlot, setSelectedChargingSlot] = useState<number | null>(null);
 
   const chargingSlots = [
@@ -829,45 +854,104 @@ const Solutions = () => {
     },
   };
 
-  useEffect(() => {
+  const refreshParkingResults = useCallback(() => {
     if (selectedState && selectedDistrict && selectedArea) {
-      const results = parkingData[selectedState]?.[selectedDistrict]?.[selectedArea] || [];
+      const results = platformData.searchLots(selectedArea).map((lot, index) => ({
+        id: lot.id,
+        name: lot.name,
+        distance: `${(0.2 + index * 0.4).toFixed(1)} km`,
+        available: lot.availableSpots,
+        price: `₹${lot.pricePerHour}/hr`,
+        address: lot.address,
+        ownerName: lot.ownerName,
+        cameras: lot.cameras,
+        confidence: lot.confidence,
+        cameraStatus: lot.cameraStatus,
+      }));
       setParkingResults(results);
     } else {
       setParkingResults([]);
     }
   }, [selectedState, selectedDistrict, selectedArea]);
 
+  useEffect(() => {
+    refreshParkingResults();
+    const handleUpdate = () => refreshParkingResults();
+    window.addEventListener("smart-parking-db-updated", handleUpdate);
+    return () => window.removeEventListener("smart-parking-db-updated", handleUpdate);
+  }, [refreshParkingResults]);
+
   const handleFindParking = () => {
     if (!selectedState || !selectedDistrict || !selectedArea) {
       toast.error("Please select state, district, and area");
       return;
     }
-    toast.success(`Finding parking in ${selectedArea}, ${selectedDistrict}, ${selectedState}...`);
+    refreshParkingResults();
+    toast.success(`Live camera data loaded for ${selectedArea}`);
   };
 
-  const handleSendMessage = () => {
-    if (!userMessage.trim()) return;
+  const handleReserveParking = (lotId: string) => {
+    if (!bookingVehicle.trim()) {
+      toast.error("Enter a vehicle number before reserving.");
+      return;
+    }
 
-    setChatMessages((prev) => [...prev, { role: "user", text: userMessage }]);
+    try {
+      const booking = platformData.createBooking(lotId, bookingVehicle, "Demo Driver", 2);
+      setLatestBooking(booking);
+      toast.success(`Booking ${booking.id} confirmed and synced to platform database`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not reserve parking.");
+    }
+  };
 
-    // Simulate AI response
+  const handleAddOwnerLot = () => {
+    const lot = platformData.addOwnerLot(ownerForm);
+    setSelectedState("Maharashtra");
+    setSelectedDistrict("Mumbai");
+    setSelectedArea(lot.area);
+    toast.success(`${lot.name} connected with ${lot.cameras} camera feeds`);
+  };
+
+  const handleSendMessage = (message = userMessage) => {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
+
+    setChatMessages((prev) => [...prev, { role: "user", text: trimmedMessage }]);
+    setIsAssistantTyping(true);
+
     setTimeout(() => {
+      const msg = trimmedMessage.toLowerCase();
+      const lots = platformData.getLots();
+      const bookings = platformData.getBookings();
+      const cheapestLot = [...lots].sort((a, b) => a.pricePerHour - b.pricePerHour)[0];
+      const mostAvailableLot = [...lots].sort((a, b) => b.availableSpots - a.availableSpots)[0];
+      const matchedLot = lots.find((lot) => msg.includes(lot.area.toLowerCase()) || msg.includes(lot.name.toLowerCase().split(" ")[0]));
       let response = "";
-      const msg = userMessage.toLowerCase();
-      
-      if (msg.includes("downtown") || msg.includes("near") || msg.includes("andheri") || msg.includes("bandra")) {
-        response = "I found 3 available parking spots nearby. The closest is Andheri Metro Parking, 0.2 km away with 38 spots available at ₹60/hr. Would you like directions?";
-      } else if (msg.includes("price") || msg.includes("cheap") || msg.includes("affordable")) {
-        response = "The most affordable option is at ₹20/hr in Electronic City Tech Park, with 105 spots currently available. It's 1.3 km from your location.";
-      } else if (msg.includes("available") || msg.includes("spot")) {
-        response = "Yes! I'm showing 285 total available spots in your area. The largest availability is at Phoenix Marketcity with 145 open spaces.";
+
+      if (msg.includes("latest") || msg.includes("booking")) {
+        const booking = bookings[0];
+        response = booking
+          ? `Latest booking is ${booking.id} for ${booking.vehicleNumber} at ${booking.lotName}. Amount: ₹${booking.amount}. Status: ${booking.status}.`
+          : "No parking bookings are stored yet. Reserve a slot and I will show it here.";
+      } else if (msg.includes("camera") || msg.includes("status")) {
+        const onlineCameras = lots.reduce((sum, lot) => sum + (lot.cameraStatus !== "offline" ? lot.cameras : 0), 0);
+        response = `${onlineCameras} cameras are connected across ${lots.length} owner parking areas. The camera engine is reading availability from existing CCTV feeds in this prototype.`;
+      } else if (msg.includes("owner") || msg.includes("rent")) {
+        response = "Owners can enter their parking area name, total spots, camera count, and hourly rate. The platform database then publishes that area for driver booking and dashboard monitoring.";
+      } else if (msg.includes("cheap") || msg.includes("price") || msg.includes("affordable")) {
+        response = `Cheapest camera-connected lot is ${cheapestLot.name} in ${cheapestLot.area}: ₹${cheapestLot.pricePerHour}/hr with ${cheapestLot.availableSpots} spots available.`;
+      } else if (matchedLot) {
+        response = `${matchedLot.name} has ${matchedLot.availableSpots}/${matchedLot.totalSpots} camera-verified spots available at ₹${matchedLot.pricePerHour}/hr. Owner: ${matchedLot.ownerName}.`;
+      } else if (msg.includes("available") || msg.includes("spot") || msg.includes("nearest")) {
+        response = `Best current option is ${mostAvailableLot.name} in ${mostAvailableLot.area}, with ${mostAvailableLot.availableSpots} available spots and ${mostAvailableLot.cameras} connected cameras.`;
       } else {
-        response = "I can help you find parking! Try asking me about parking near a specific location, available spots, or pricing information in Indian cities.";
+        response = "I can check cheapest parking, available spots, camera status, latest booking, or explain how owners rent their camera-covered parking areas.";
       }
 
       setChatMessages((prev) => [...prev, { role: "bot", text: response }]);
-    }, 1000);
+      setIsAssistantTyping(false);
+    }, 800);
 
     setUserMessage("");
   };
@@ -878,10 +962,80 @@ const Solutions = () => {
       <section className="bg-gradient-hero text-white py-20 md:py-32">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto text-center animate-fade-in">
-            <h1 className="mb-6">Smart Parking Solutions</h1>
+            <h1 className="mb-6">Camera-Based Parking Marketplace</h1>
             <p className="text-xl md:text-2xl text-white/90">
-              Experience the future of parking with AI-powered tools and intelligent assistants
+              List private parking areas using existing cameras, detect free spaces, and let drivers reserve verified slots in real time
             </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Owner Onboarding */}
+      <section className="py-12 bg-background">
+        <div className="container mx-auto px-4">
+          <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="p-6 bg-gradient-card lg:col-span-2">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-11 h-11 rounded-lg bg-primary flex items-center justify-center">
+                  <Building2 className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold">Rent Your Parking Area</h2>
+                  <p className="text-sm text-muted-foreground">Connect existing CCTV cameras and publish open spaces to drivers.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <Label>Owner Name</Label>
+                  <Input value={ownerForm.ownerName} onChange={(event) => setOwnerForm({ ...ownerForm, ownerName: event.target.value })} />
+                </div>
+                <div>
+                  <Label>Parking Area Name</Label>
+                  <Input value={ownerForm.lotName} onChange={(event) => setOwnerForm({ ...ownerForm, lotName: event.target.value })} />
+                </div>
+                <div>
+                  <Label>City Area</Label>
+                  <Input value={ownerForm.area} onChange={(event) => setOwnerForm({ ...ownerForm, area: event.target.value })} />
+                </div>
+                <div>
+                  <Label>Total Spots</Label>
+                  <Input type="number" value={ownerForm.totalSpots} onChange={(event) => setOwnerForm({ ...ownerForm, totalSpots: Number(event.target.value) })} />
+                </div>
+                <div>
+                  <Label>Existing Cameras</Label>
+                  <Input type="number" value={ownerForm.cameras} onChange={(event) => setOwnerForm({ ...ownerForm, cameras: Number(event.target.value) })} />
+                </div>
+                <div>
+                  <Label>Rate Per Hour</Label>
+                  <Input type="number" value={ownerForm.pricePerHour} onChange={(event) => setOwnerForm({ ...ownerForm, pricePerHour: Number(event.target.value) })} />
+                </div>
+              </div>
+
+              <Button onClick={handleAddOwnerLot}>
+                <Database className="mr-2 h-4 w-4" />
+                Add to Platform Database
+              </Button>
+            </Card>
+
+            <Card className="p-6 bg-gradient-card">
+              <h3 className="font-semibold mb-4">System Status</h3>
+              <div className="space-y-4 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2"><Camera className="h-4 w-4 text-primary" /> Camera feeds</span>
+                  <Badge className="bg-success text-success-foreground">Online</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2"><Database className="h-4 w-4 text-primary" /> Platform DB</span>
+                  <Badge className="bg-success text-success-foreground">Synced</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Booking API</span>
+                  <Badge variant="outline">Live Store</Badge>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-5">The platform stores lots and bookings for live demo operations.</p>
+            </Card>
           </div>
         </div>
       </section>
@@ -891,9 +1045,9 @@ const Solutions = () => {
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-12 animate-fade-in">
-              <h2 className="mb-4">AI Parking Finder</h2>
+              <h2 className="mb-4">Live Parking Finder</h2>
               <p className="text-lg text-muted-foreground">
-                Find the perfect parking spot based on location, availability, and price
+                Search parking areas published by owners. Availability is updated from connected camera feeds for this demo.
               </p>
             </div>
 
@@ -983,6 +1137,16 @@ const Solutions = () => {
                     </Select>
                   </div>
 
+                  <div>
+                    <Label htmlFor="vehicle-number">Vehicle Number</Label>
+                    <Input
+                      id="vehicle-number"
+                      value={bookingVehicle}
+                      onChange={(event) => setBookingVehicle(event.target.value)}
+                      placeholder="MH 02 AB 1234"
+                    />
+                  </div>
+
                   <Button
                     className="w-full"
                     onClick={handleFindParking}
@@ -996,6 +1160,18 @@ const Solutions = () => {
 
               {/* Results */}
               <div className="lg:col-span-2 space-y-4">
+                {latestBooking && (
+                  <Card className="p-5 border-success/40 bg-success/5">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Latest confirmed booking</div>
+                        <h3 className="text-xl font-bold">{latestBooking.id} • {latestBooking.vehicleNumber}</h3>
+                        <p className="text-sm text-muted-foreground">{latestBooking.lotName} • ₹{latestBooking.amount} • Stored in platform database</p>
+                      </div>
+                      <Badge className="bg-success text-success-foreground">Confirmed</Badge>
+                    </div>
+                  </Card>
+                )}
                 {parkingResults.length > 0 ? (
                   parkingResults.map((result, index) => (
                     <Card
@@ -1003,25 +1179,45 @@ const Solutions = () => {
                       className="p-6 bg-gradient-card hover:shadow-lg transition-all duration-300 hover:-translate-y-1 animate-fade-in"
                       style={{ animationDelay: `${index * 0.1}s` }}
                     >
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div className="space-y-2 flex-1">
-                          <h3 className="text-lg font-semibold">{result.name}</h3>
-                          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <MapPin className="h-4 w-4 text-primary" />
-                              <span>{result.distance}</span>
+                      <div className="flex flex-col gap-5">
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-lg font-semibold">{result.name}</h3>
+                              <Badge className="bg-success text-success-foreground">{result.cameraStatus === "online" ? "Camera Online" : "Syncing"}</Badge>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Clock className="h-4 w-4 text-success" />
-                              <span>{result.available} spots</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <DollarSign className="h-4 w-4 text-warning" />
-                              <span>{result.price}</span>
+                            <p className="text-sm text-muted-foreground">Owned by {result.ownerName} • {result.address}</p>
+                            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <MapPin className="h-4 w-4 text-primary" />
+                                <span>{result.distance}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Clock className="h-4 w-4 text-success" />
+                                <span>{result.available} camera-verified spots</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Camera className="h-4 w-4 text-primary" />
+                                <span>{result.cameras} existing cameras</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <IndianRupee className="h-4 w-4 text-warning" />
+                                <span>{result.price}</span>
+                              </div>
                             </div>
                           </div>
+                          <div className="text-left md:text-right">
+                            <div className="text-2xl font-bold text-primary">{result.confidence}%</div>
+                            <div className="text-xs text-muted-foreground">AI occupancy confidence</div>
+                          </div>
                         </div>
-                        <Button>Get Directions</Button>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Button onClick={() => handleReserveParking(result.id)} disabled={result.available < 1}>
+                            <CheckCircle2 className="mr-2 h-4 w-4" />
+                            Reserve Spot
+                          </Button>
+                          <Button variant="outline">Get Directions</Button>
+                        </div>
                       </div>
                     </Card>
                   ))
@@ -1102,6 +1298,13 @@ const Solutions = () => {
                     </div>
                   </div>
                 ))}
+                {isAssistantTyping && (
+                  <div className="flex justify-start animate-fade-in">
+                    <div className="max-w-[80%] p-3 rounded-lg bg-muted text-muted-foreground">
+                      Assistant is checking live camera data...
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Input */}
@@ -1110,7 +1313,7 @@ const Solutions = () => {
                   placeholder="Ask about parking availability, pricing, or locations..."
                   value={userMessage}
                   onChange={(e) => setUserMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
                 />
                 <Button onClick={handleSendMessage} size="icon">
                   <Send className="h-4 w-4" />
@@ -1119,16 +1322,13 @@ const Solutions = () => {
 
               {/* Suggested Questions */}
               <div className="mt-4 flex flex-wrap gap-2">
-                {["Where can I park near Andheri?", "What's the cheapest option?", "Show available spots"].map(
+                {["Show camera status", "What's the cheapest option?", "Show latest booking", "How can owners rent space?"].map(
                   (suggestion) => (
                     <Button
                       key={suggestion}
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setUserMessage(suggestion);
-                        setTimeout(() => handleSendMessage(), 100);
-                      }}
+                      onClick={() => handleSendMessage(suggestion)}
                     >
                       {suggestion}
                     </Button>

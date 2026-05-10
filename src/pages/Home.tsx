@@ -54,14 +54,13 @@ const Home = () => {
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-4xl mx-auto text-center animate-fade-in">
             <Badge className="mb-6 bg-white/20 text-white border-white/30 text-sm">
-              Smart Parking Powered by AI & IoT
+              Camera-Based Parking Marketplace
             </Badge>
             <h1 className="mb-6">
-              The Future of Urban Parking Management
+              Turn Existing Camera-Covered Areas Into Smart Parking
             </h1>
             <p className="text-xl md:text-2xl mb-8 text-white/90 leading-relaxed">
-              Revolutionary AI-powered solutions that transform parking infrastructure with 
-              intelligent automation, real-time analytics, and seamless user experience
+              A camera-based parking marketplace where property owners list unused spaces and drivers reserve available spots detected from existing CCTV feeds
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to="/dashboard">
@@ -91,7 +90,7 @@ const Home = () => {
           <div className="text-center mb-12 animate-fade-in">
             <h2 className="mb-4">Core Features</h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Comprehensive smart parking solution with 7 integrated modules
+              Owners connect existing cameras. Drivers find verified parking. Admins monitor bookings and occupancy.
             </p>
           </div>
 
